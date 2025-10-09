@@ -25,6 +25,7 @@ from openai import OpenAI
 import requests
 from urllib.parse import urlencode
 import base64
+import difflib
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -1573,9 +1574,17 @@ async def commit_fixes_endpoint(analysis_id: str, branch_name: str, github_token
                         fixed_code = fix.get('fixed_code', '')
                         original_code = fix.get('original_code', '')
                         
-                        # Replace the original code with fixed code
+                        # Replace the original code with fixed code using diff method
                         if original_code and original_code in current_content:
-                            new_content = current_content.replace(original_code, fixed_code, 1)
+                            # Use difflib to generate diff and apply fix
+                            diff = difflib.ndiff(current_content.splitlines(keepends=True), fixed_code.splitlines(keepends=True))
+                            new_content_lines = []
+                            for line in diff:
+                                if line.startswith('  ') or line.startswith('+ '):
+                                    new_content_lines.append(line[2:])
+                                elif line.startswith('? '):
+                                    continue
+                            new_content = ''.join(new_content_lines)
                         else:
                             # If exact match not found, use the entire fixed_code
                             new_content = fixed_code
@@ -1869,7 +1878,7 @@ Provide the complete fixed code that addresses this specific issue."""
             explanation = fix_data.get('explanation', 'AI-generated fix applied')
             confidence = fix_data.get('confidence', 0.8)
         except json.JSONDecodeError:
-            fixed_code = response_text[:2000]
+            fixed_code = response_text
             explanation = 'AI-generated fix applied'
             confidence = 0.7
         
@@ -1892,8 +1901,8 @@ The fix shown below addresses the described issue."""
             confidence_score=confidence,
             file_path=issue.get('file_path', 'unknown'),
             line_number=issue.get('line_number'),
-            original_code=original_for_fix[:2000],  # Limit size
-            fixed_code=fixed_code[:2000],  # Limit size
+            original_code=original_for_fix,  # Limit size
+            fixed_code=fixed_code,  # Limit size
             explanation=explanation,
             validated=True
         )
